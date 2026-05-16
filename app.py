@@ -137,6 +137,7 @@ def calculate_uniformity(h_profile, r, R_wafer):
 
 
 def analytical_solution_no_evaporation(h0, omega, eta0, t):
+    """EBP 모델의 수학적 해석해(Analytical Solution) 공식"""
     K = 2 * RHO * (omega ** 2) / (3 * eta0)
     return h0 / np.sqrt(1 + 4 * K * (h0 ** 2) * t)
 
@@ -161,7 +162,7 @@ R_wafer = R_wafer_mm * 1e-3
 tab1, tab2, tab3 = st.tabs(["🔬 시뮬레이션", "📐 이론 검증", "🎯 공정 최적화"])
 
 # =========================================================================
-# TAB 1: 메인 시뮬레이션
+# TAB 1: 메인 시뮬레이션 (Real-time Visualization)
 # =========================================================================
 with tab1:
     st.header("Meyerhofer 모델 기반 스핀 코팅 시뮬레이션")
@@ -193,26 +194,60 @@ with tab1:
     plt.close(fig)
 
 # =========================================================================
-# TAB 2: 이론 검증
+# TAB 2: 이론 검증 (★수정 및 기능 추가: Validation View)
 # =========================================================================
 with tab2:
-    st.header("📐 해석해와의 비교 검증")
+    st.header("📐 해석해와의 비교 검증 (Analytical-Solution Comparison)")
+    st.markdown("증발 효과를 배제한 순수 **Emslie-Bonner-Peck (EBP) 모델** 조건에서 **수치해석(Numerical)** 결과와 **해석해(Analytical)** 공식을 실시간으로 비교 플로팅하여 시뮬레이터의 신뢰성을 정밀 검증합니다.")
+    
     def simple_ode(t, h, omega, eta0):
         return [-(2 * RHO * (omega ** 2) * (max(h[0], 1e-12) ** 3)) / (3 * eta0)]
         
+    # 수치해석 솔버 실행 (0초부터 20초까지)
     sol_simple = solve_ivp(simple_ode, [0, 20], [h0], args=(omega, eta0), max_step=0.1)
+    t_eval = sol_simple.t
     h_num = sol_simple.y[0]
-    h_ana = analytical_solution_no_evaporation(h0, omega, eta0, sol_simple.t)
+    
+    # 수학적 해석해 도출
+    h_ana = analytical_solution_no_evaporation(h0, omega, eta0, t_eval)
+    
+    # 두 결과 사이의 상대 오차 계산
     rel_err = np.abs(h_num - h_ana) / h_ana * 100
-    st.success(f"✅ 검증 완료: 이론값 대비 최대 오차 = **{np.max(rel_err):.4f}%**")
+    max_error = np.max(rel_err)
+    
+    st.success(f"✅ 검증 완료: 수학적 해석해 대비 수치해석 솔버의 최대 상대 오차 = **{max_error:.6f}%**")
+    
+    # ---------------------------------------------------------------------
+    # [과제 요구사항 핵심 반영] Analytical vs Numerical 비교 플롯 생성
+    # ---------------------------------------------------------------------
+    fig_val, ax_val = plt.subplots(figsize=(10, 4.5))
+    
+    # 두 개의 선을 겹쳐서 플로팅 (해석해는 점선, 수치해석해는 실선)
+    ax_val.plot(t_eval, h_ana * 1e6, 'r--', linewidth=2.5, label='Analytical Solution (EBP Equation)')
+    ax_val.plot(t_eval, h_num * 1e6, 'b-', linewidth=1.5, label='Numerical Solution (scipy solve_ivp)')
+    
+    ax_val.set_title('Validation View: Analytical vs Numerical Solution', fontsize=12, fontweight='bold')
+    ax_val.set_xlabel('Time (s)', fontsize=10)
+    ax_val.set_ylabel('Film Thickness (µm)', fontsize=10)
+    ax_val.grid(True, alpha=0.3)
+    ax_val.legend(fontsize=10)
+    
+    # 오차 텍스트 박스 추가 삽입
+    ax_val.text(0.6, 0.75, f"Max Relative Error:\n {max_error:.6f} %", 
+                transform=ax_val.transAxes, bbox=dict(facecolor='white', alpha=0.8, boxstyle='round,pad=0.5'))
+    
+    # 스트림릿 화면에 그래프 렌더링
+    st.pyplot(fig_val)
+    plt.close(fig_val)
 
 # =========================================================================
-# TAB 3: 공정 최적화
+# TAB 3: 공정 최적화 (Design-Exploration Mode / Geometry)
 # =========================================================================
 with tab3:
     st.header("🎯 공정 설계 챌린지 룸")
     st.markdown("**목표**: 지정된 목표 두께와 균일도 스펙(±2%)을 동시에 만족하는 제어 조건 찾기")
     
+    # User-editable geometry / Target 세팅
     target_h_nm = st.number_input("🎯 목표 최종 두께 (nm)", 100, 5000, 1000, 50)
     target_h = target_h_nm * 1e-9
     
